@@ -1,0 +1,48 @@
+
+#define BUFLEN 4096
+#define LENGHT 35
+
+
+#define BRUTE_FORCE_ATTEMPS 3
+#define MAX_CLIENTS 15
+
+
+#define _ERROR -1
+#define _SUCCES 1
+
+
+#define  NEAUTENTIFICAT			    -1
+#define  SESIUNE_DESCHISA			-2
+#define  USER_PASS_GRESIT           -3
+#define  FISIER_NEEXISTENT          -4
+#define  DESCARCARE_INTERZISA       -5
+#define  FISIER_DEJA_PARTAJAT       -6
+#define  FISIER_DEJA_PRIVAT         -7
+#define  BRUTE_FORCE                -8
+#define  FISIER_EXISTENT_PE_SERVER  -9
+#define  FISIER_IN_TRANSFER         -10
+#define  UTILIZATOR_INEXISTENT      -11
+
+#define COMANDA_INVALIDA -12
+#define USER_DEJA_LOGAT -13
+
+
+#define AUTENTIFICARE_SUCCES 1
+#define FOREVER 1
+#define LOGOUT_SUCCES 2
+#define TRIMITE_STRING 3
+#define ACCESS_UPLOAD 4
+
+#define FROM_USER 5
+#define FROM_STATION 6
+#define UPLOAD_MESSAGE 7
+#define ACCESS_DOWNLOAD 8
+#define DOWNLOAD_MESSAGE 9
+#define IESIRE_SISTEM 10
+#define IESIRE_SISTEM_SERVER 11
+#define FISIER_PARTAJAT 200
+#define FISIER_PRIVAT 201
+#define FISIER_STERS 202
+
+
+

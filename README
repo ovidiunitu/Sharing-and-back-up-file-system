@@ -1,0 +1,73 @@
+Pentru compilarea temei am folosit C++ si am creat un Makefile cu targeturile build si clean. Pentru obtinerea ambelor executabile este suficient sa apelam make, sau make build. Pentru client sau server, trebuie executat Makefile-ul cu argumentul client (make client) sau pentru server (make select server). De asemenea, in cadrul clientului sau serverului trebuie sa fie prezent fisierul errors_ok.h
+
+Pentru implementarea serverului m-am folosit de mai multe functii si structuri de date pe care le voi prezenta. 
+
+De asemenea pentru upload/download am deschis cate un socket tcp pentru fiecare fisier in transfer.
+
+Pentru utilizatori mi-am creat o structura utilizator, si un vector de utilizatori, numit Utilizari. Structura utilizator contine urmatoarele campuri: name, pass, un vector de fisiere ( care reprezinta de fapt fisierele care sunt SHARE-uite cu ceilalti utilizatori, acest vector se modifica dinamic in functie de executia programului). Strutura de fisiere are urmatoarele campuri: name, size_in_bytes, (adica dimensiunea in bytes care este de fapt un long long ) si o variabila de tip bool care imi indica faptul daca fisierul respectiv este sharuit sau nu.
+
+Pe langa acest vector de utilizatori mai am si urmatoarele structuri:
+- un map <string, int> user_map, care pentru un anumit nume de utilizator obtin indicele utilizatorului respectiv in vectorul de Utilizatori.
+- map < int, string > socket_user_map, care imi spune numele utilizatorului conectat pe socketul respectiv.
+- map < string, vector<int> > user_socket_map, care pentru un anumit nume de utilizator obtin un vecotori de int care reprezinta vectorul de socketi deschisi, de catre utilizatorul respectiv
+- map <int, int> socket_online, care imi indica de cate ori s-a autentificat un user pe socketul respectiv
+- map <int, string> socket_file, care pentru un socket imi inidica numele fisierului deschis 
+- map <int, int > socktcp_file, care pentru un socket deschis imi inidica ce socket (ce fisier) vrea sa il acceseze ( aceasta strucutura o folosesc la download si la upload)
+- map <int, long long > socktcp_size, care pentru un socket deschis imi indica dimesiunea fisierului pe care vrea sa il descarce sau sa il incarce
+
+- files_in_transfer, si files_in_download, sunt niste vectori de tip string care imi indica numele fisierului care se incarca respectiv se descarca.
+- set <int> clienti, imi indica ce utilizatori ce sunt conectati (socketii respectivi);
+
+O sa prezint in continuare cum am implementat functionalitatile cerute (in server)
+Un lucru important de precizat este faptul ca mesajele mele trimise sunt codificate astfel (mesajele trimise catre client, o sa evidentiez si mesajele trimise de la client la server mai tarziu):
+mesaj => SUCCES/ERR _ CODEroare/Succes _ [mesaj optional]
+adica pe primul byte, pun 0 sau 1, mai precis, _ERROR sau _SUCCES, iar pe urmatorii 4 octeti pun codul de eroare sau de succes, urmand apoi corpul mesajului. In cazul unui mesaj de eroare, nu mai trimit niciun mesaj, deoarece clientul este capabil sa interpreteze codul de eroare si sa o afisaze.
+
+1. login_user 
+	Cand serverul primeste de la client comanda de login, mai intai descompun aceasta comanda pentru a afla username-ul si parola, folsind functia strtok. Daca unul dintre campurile obligatorii pentru aceasta comanda lipsesc, trimit mesajul de eroare la user. Daca totul este in regula continui procedura de autentificare.
+Daca userul si parola nu sunt bune, atunci cresc numarul de incercari de autentificare ( socket_online), iar daca acest numar este egal cu BRUTE_FORCE_ATTEMPS (macro), trimit un mesajul de eroare BRUTE_FORCE si deconectez userul. Cand clientul primeste acest mesaj, de eroare el isi opreste executia. 
+In cazul in care autentificarea a afost cu succes, socket_online[user_socket] devine 0, retin faptul ca pe socketul curent s-a autentificat utilizatorul respectiv si ca pentru userul care s-a autentificat, adaug faptul ca socketul curent apartine utilizatorului si de asemenea trimit un mesaj de succes utilizatorului.
+
+2. logout_user
+	Pentru logout, aflu numele userului ( aflu acest lucru din map: socket_user_map) si sterg socketul respectiv pe care era autentificat din lista s-a de socketi. Clientul este logat, deoarece aceasta verificare se face in client.
+
+3. getuserlist
+	Pentru aceasta comanda, parcurg tot vectorul Utilizatori si retin intr-o variabila de tip string numele acestora urmat de cate un enter '\n';
+	Trimit acest mesaj catre user cu precizarea ca o fac doar daca informatia nu depaseste BUFLEN-2 (dimensiunea maxima a unui pachet pe care il trimit la un moment dat. In caz contrar, trimit mesajul in bucati pana cand stringul respectiv s-a terminat. Mesajul trimis la utilizator are codul de succes TRIMITE_STRING, adica dupa campurile succes si cod succes va aparea un mesaj care se va termina cu caracterul NULL.
+
+4. getfilelist
+	Pentru getfilelist operatiile decurg analog, cu deosebirea ca dupa ce aflu campurile comenzii getfilelist, aflu daca userul respectiv se afla in sistem ( parcurg pur si simplu vectorul de Utilizatori si il caut dupa username). In caz ca nu exista trimit un mesaj de eroare la user cu cu codul de UTILIZATOR_INEXISTENT. Daca utilizatorul exista deschid directorul sau ( care stiu sigur ca exista, l-am creat in caz ca nu exista) si citesc continutul directorului, si omit fisierele . si .. Citirea o fac cu functia readdir iar tot contintului il salvez intr-o variabila de tip string. De asemenea retin in dimesiunea unui fisier folosind struct stat st si deasemenea vad daca fisierul e SHARUIT, adica ma uit prin vectorul files a utilizatorului curent si il parcurg. In caz de succes in seamna ca fisierul este SHARE, alfel este privat. Analog ca la getuserlist nu trimit tot mesajul, ci bucati.
+
+5. upload
+	In cazul uploadului, mai intail aflu numele fisierului din comanda trimisa de la client. Daca fisierul curent este in transfer (adica se uploadeaza ceva - verificare realizata prin parcurgerea vectorului is_in_transfer) atunci trimit un mesaj de eroare utilizatorului cum ca fisierul se uploadeaza deja, iar daca fisierul respectiv exista pe server, atunci trimit un mesaj de eroare utilizatorului FISIER_EXISTENT_PE_SERVER. Daca totul a descurs in regula, atunci introduc fisierul curent in vecotorul files_in_transfer, creez fisierul respectiv (cu functia open) si trimit utilizatorului un mesaj de succes, adica are acces sa faca upload, mesajul continand de asemenea, pe primii 4 octeti, socketul fisierului deschis pe server, si numele acestuia. Clientul primeste acest mesaj, deschide un socket nou, si trimite mesaj inapoi catre server continand socketul fisierului pe care l-a primit de la server, si dimensiunea fisierului. Serverul primeste acest mesaj si realizeaza conexiunea de upload, atibuind socketului pe care a primit mesaj descriptorul fisierului in care sa scrie, si dimesniunea acestuia, trimitand in cele din urma un mesaj de confirmare (ack) clientului. Urmatoarele comenzi pe acest socket vor fi recunoscute ca mesaje de upload a fisierului. Acesta citeste de pe socketul respectiv si verifica cat mai are de descarcat, daca dupa scrierea in fisier se realizeaza ca nu mai exista ce sa se scrie ( dimensiunea fisierului deivine 0 in socktcp_size), atunci sereverul scoate socketul curent din lista de socketi pe care ii asculta, scoate fisierul curent din lista de fisiere in transfer si sterge toate informatiile legate de acesta ( socket_file, socktcp_file, socktcp_size)
+
+6 download
+	Downloadul se realizeaza asemanator ca uploadul, doar ca este in oglinda. In urma primirii comenzii, serverul verifica daca fisierul se afla in transfer, adica daca se uploadeaza, sau daca exista pe server). In caz ca exista se verifica daca este sharuit de utilizatorul curent ( adica daca am permisiunea de al descarca), iar in caz de succes se deschide fisierul respectiv, iar clientului ii se trimite un mesaj de succes de tip ACCESS_DOWNLOAD care contine socketul deschis de catre server ( catre fisier), dimensiunea acestuia si numele sau. Clientul primeste acest mesaj, deschide un nou socket, adauga fisierul ce se descarca intr-o lista de fisere ce se descarca si trimete inapoi serverului (pe socketul pe care l-a deschis) filedescriptorul fisierului de pe server care se descarca, alaturi de dimensiunea acestuia. Serverul primeste aceste ultime doua informatii si le memoreaza in map-urile corespunzatore (socktcp_file si socktcp_size), dupa care trimite un pachet clientului. Acesata citeste din fisierul deschis (corespunzator socketului curent) si incearca sa trimita un mesaj de DOWNLOAD_MESSAGE clientului. Cand acesta realizeaza ca nu mai poate sa citeasca din fisier (adica socktcp_size[user_socket] == 0) atunci acesta trimite ultimul packet si inchide conexiunea cu userul curent si sterge din map-uri toate informatiile legate despre acesta
+
+7. share
+	Comanda share (make_share) cauta vectorul files al utilizatorului conectat pe socketul curent si in caz ca il gaseste returneaza o eroare (FISIER_DEJA_PARTAJAT), iar daca nu il cauta in folderul sau si in caz ca nu exista se retuneaza (FISIER_NEEXISTENT), daca nu, se introduce numele fisierului repsectiv in vectorul de fisiere partajate ale utilizatorului si apoi se trimite un mesaj de ok catre utilizator.
+
+8. unshare
+	Acesta comanda este exact precum comanda share doar ca este in oglinda (diferenta constand in faptul ca acum se cauta direct in vectorul de fisiere partajate ale utilizatorului) si in caz de succes se trimite un mesaj de succes (FISIER_PARTAJAT)
+
+9. delete
+	Se cauta in folderul utilizatorului conectat pe user_socket daca acel fisier exista. Daca acesta exista si nu este in tranfer (atat download cat si upload) se sterge cu functia unlink si se trimite un mesaj de succes clientului (FISIER_STERS)
+
+10. quit
+	Pentru quit, serverul trimite un mesaj clientilor conectati ( aici intervine multimea clienti (set)), adica trimite un mesaj soketilor deschisi pe care nu se realizeaza upload sau download. Acestia vad mesajul de la server si vor confirma serverului ca isi vor inchide conexiunea si astefel, atat serverul cat si clientii conectati isi vor opri comunicarea. O sa mai ramana socketii deschisi pentru download si upload
+
+In cazul clientului folosesc doua structuria asemanatoare ca cele din server, numite uploadfile si download_file in care retin daca sunt folosite la momentul actual (bool), ce nume are fisierul, ce filedescriptor ii corespunde in folderul local, dar si pe server, iar pe langa aceste lucruri mai retin dimensiunea si socketul prin care acestea comunica cu serverul. Astfel am doi vectori in care retin fisierele care se descarca si sunt urcate pe server la momentul actual.
+In main, ma conectez la server si introduc in read_fds socketul pe care ascult conexiuni precum si 0 pentru input. Apoi folosesc functia select (la fel ca in cazul serverului ca sa ascult pe ce socket am primit informatii). Prima data analizez ce am primit de la utilizator.
+Daca informatia este relevanta (nu este doar '\n', caz in care afisam doar promptul utilizatorului) o analizez; Aceasta analiza se realizeaza (local) in doua etape. Prima data se verifica daca informatia este valida (adica corespunde cuvintelor cheie prezente in tema), iar in cazul nefavorabil se afiseaza un mesaj de eroare ( comanda_invalida). A doua parte a verificarii consta intr-o analiza mai detaliata. Daca utilizatorul cere o comanda de login, se verifica daca exista un utilizator logat. Daca cere orice alta comanda se verifica sa existe un utilizator logat. Analog se fac verifica semantice si pentru functia de upload,  (verificare daca exista fisier, si corectitudine ), download, share, unshare, delete. 
+De precizat este faptul ca mesajele transmise catre server sunt codificate astfel:
+primul byte inidica cine a trimis informatia catre server (un user sau un socket pe care se realizeaza un upload sau un download)
+
+Tot in bucla de while mai verifica daca am primit ceva pe socketul prin care comunic cu serverul. Prima data verifica daca este mesaj de eroare sau de succes si le analizez separat, dupa care afisez informatia respectiva corespunzatoare. Adica de exemplu cand primesc un mesaj de eroare de tip brute force, atunci afisez eroarea si opresc executia programului. 
+Cazurile de succes sunt mai ample. 
+Daca am primit un mesaj de autentificare cu succes atunci setez promptul sa imi afiseze userul curent. Daca am primit un mesaj de tipul TRIMITE_STRING, atunci afisez si scriun in fisierul de log mesajul primit. 
+Daca am primit un acces de upload, atunci indetific fisierul (l-am primit in mesajul de la server), deschid fisierul respectiv, il introduc intrun vector ce imi indica ca acest fisier se descarca (uploading) alaturi desigur informatile sale importante ( nume fisier, socketi etc), deschid un socket nou, si trimit inapoi la server urmatoarea informatie "u socket dimensiue". Litera u provine de la faptul ca acesta este un mesaj de tip upload si serverul stie ca dupa aceasta litera se gaseste socketul in care sa scrie si dimensiunea acestuia (adica cat trebuie sa scrie). In cazul unui download lucrurile stau la fel ca la upload. Celalalte cazuri constau in afisarea de mesaje, cu exceptia mesajelor de succes precum IESIRE_SISTEM_SERVER sau IESIRE_SISTEM caz ii trimite un ultim mesaj serverului si apoi inchide comunicatia cu acesta :(.
+
+Dupa ce am analizat si ce am primit de la server parcurg vectorul de downloading files si uploading files si vad daca am primit ceva de la server pe aceste socketuri. In cazul uploadului incerc sa fac un upload pana cand termin fisierul de citit. In cazul downloadului procedez asemanator, incercand sa descarca pana cand s-a terminat de scris. Aceasta comunicare este de tipul receive - ack.
+In mod evident, cand termin un upload/download il elimin din lista respectiva.
+
+ 
